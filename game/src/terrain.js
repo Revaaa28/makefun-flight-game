@@ -46,6 +46,8 @@ export function heightAt(x, z) {
   return h;
 }
 
+const SAND_COLOR = new THREE.Color(COLORS.sand);
+
 function vertexColor(x, z, h, out) {
   const dRiver = Math.abs(x - riverX(z));
   if (h < WORLD.waterLevel + 0.7) out.set(COLORS.sand);
@@ -58,6 +60,15 @@ function vertexColor(x, z, h, out) {
     else out.set(COLORS.grass);
     if (h > 235) out.set(COLORS.snow);
   }
+  // Sandy banks where the valley floor meets the water: a tan shoulder
+  // fading out as the bank climbs and widens away from the centreline.
+  if (dRiver < 118 && h >= WORLD.waterLevel + 0.7 && h < WORLD.waterLevel + 3.6) {
+    out.lerp(SAND_COLOR, (1 - smoothstep(58, 118, dRiver)) * 0.8);
+  }
+  // Broad tonal drift across the whole valley — warm sunlit patches and
+  // cooler shadowed ones — so big slopes never read as one flat fill.
+  const tone = fbm(x * 0.45 + 40, z * 0.45, SEED + 9);
+  out.offsetHSL((tone - 0.5) * 0.03, 0, (tone - 0.5) * 0.04);
   // Slight per-vertex jitter so the flats read as low-poly facets.
   const j = 0.94 + fbm(x * 3.1, z * 3.1, SEED + 5) * 0.12;
   out.multiplyScalar(j);
@@ -87,6 +98,35 @@ export class Terrain {
     this.buildVegetation(scene);
     this.buildFields(scene);
     this.buildRoads(scene);
+    this.buildRocks(scene);
+  }
+
+  buildRocks(scene) {
+    // Grey outcrops shouldering out of the hillsides: faceted
+    // dodecahedrons, half-buried, in two weathered greys. Kept off the
+    // valley floor, the water and the runway plateau.
+    const rng = mulberry32(SEED + 404);
+    const geo = new THREE.DodecahedronGeometry(1, 0);
+    const mats = [0x7a7268, 0x8a8178]
+      .map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    let placed = 0;
+    for (let i = 0; i < 90 && placed < 30; i++) {
+      const x = (rng() - 0.5) * (WORLD.size - 300);
+      const z = (rng() - 0.5) * (WORLD.size - 300);
+      const h = heightAt(x, z);
+      if (h < 52 || h > 215) continue;
+      if (Math.abs(x - riverX(z)) < 130) continue;
+      if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 40) continue;
+      if (Math.abs(x - RUNWAY.x) < 170 && Math.abs(z - RUNWAY.z) < 300) continue;
+      const rock = new THREE.Mesh(geo, mats[Math.floor(rng() * mats.length)]);
+      const sx = 2.5 + rng() * 4.5, sy = 1.6 + rng() * 3.2, sz = 2.5 + rng() * 4.5;
+      rock.scale.set(sx, sy, sz);
+      rock.position.set(x, h + sy * 0.25, z);
+      rock.rotation.set(rng() * 0.6, rng() * Math.PI, rng() * 0.6);
+      rock.castShadow = true; rock.receiveShadow = true;
+      scene.add(rock);
+      placed++;
+    }
   }
 
   buildGround(scene) {
@@ -112,7 +152,12 @@ export class Terrain {
   }
 
   buildWater(scene) {
-    const mat = new THREE.MeshLambertMaterial({ color: COLORS.water, transparent: true, opacity: 0.94 });
+    // Phong water: a lighter sky-blue with a real specular sheen, so the
+    // river and lake catch the low sun instead of reading as flat paint.
+    const mat = new THREE.MeshPhongMaterial({
+      color: 0x2b8fd6, specular: 0xd6ecff, shininess: 110,
+      transparent: true, opacity: 0.93,
+    });
     // The river: a ribbon of quads following the centreline at water level.
     const pts = [];
     for (let z = -WORLD.size / 2; z <= WORLD.size / 2; z += 40) pts.push(z);
@@ -277,9 +322,8 @@ export class Terrain {
     // land with edges, not confetti. One cluster terraces the west
     // slope; the other surrounds the village.
     const rng = mulberry32(SEED + 202);
-    const cols = [0x77b13c, 0x9cc24a, 0xc9a227, 0x8a5a30, 0x5da244];
+    const cols = [0x6fae35, 0x93bd42, 0xc79f22, 0x7d4f2a, 0x54963c];
     const borderMat = new THREE.MeshLambertMaterial({ color: 0x44542a });
-    const mats = cols.map((c) => new THREE.MeshLambertMaterial({ color: c }));
     const clusters = [
       { x0: -640, x1: -240, z0: -320, z1: 620, n: 20 },
       { x0: 40, x1: 460, z0: 360, z1: 940, n: 18 },
@@ -298,7 +342,13 @@ export class Terrain {
         border.position.set(x, y + 0.18, z);
         border.receiveShadow = true;
         scene.add(border);
-        const f = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mats[Math.floor(rng() * mats.length)]);
+        // Every plot gets its own jittered tint off the palette — hue,
+        // saturation and lightness all wander a little — so no two
+        // neighbouring fields share one flat fill.
+        const fc = new THREE.Color(cols[Math.floor(rng() * cols.length)]);
+        fc.offsetHSL((rng() - 0.5) * 0.035, (rng() - 0.5) * 0.07, (rng() - 0.5) * 0.06);
+        const f = new THREE.Mesh(new THREE.PlaneGeometry(w, d),
+          new THREE.MeshLambertMaterial({ color: fc }));
         f.rotation.x = -Math.PI / 2; f.rotation.z = rot;
         f.position.set(x, y + 0.32, z);
         f.receiveShadow = true;
@@ -368,8 +418,9 @@ export class Terrain {
     const trunkGeo = new THREE.CylinderGeometry(0.35, 0.5, 2.6, 5);
     const crownGeo = new THREE.ConeGeometry(2.6, 7.5, 6);
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2e });
-    const crownMat = new THREE.MeshLambertMaterial({ color: COLORS.forest });
-    for (let i = 0; i < 420; i++) {
+    const crownMats = [COLORS.forest, 0x38682c, 0x24491c, 0x41702f]
+      .map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    for (let i = 0; i < 640; i++) {
       const x = (rng() - 0.5) * (WORLD.size - 160);
       const z = (rng() - 0.5) * (WORLD.size - 160);
       const h = heightAt(x, z);
@@ -380,7 +431,8 @@ export class Terrain {
       const s = 0.8 + rng() * 0.9;
       const tree = new THREE.Group();
       const trunk = new THREE.Mesh(trunkGeo, trunkMat); trunk.position.y = 1.3;
-      const crown = new THREE.Mesh(crownGeo, crownMat); crown.position.y = 6; crown.castShadow = true;
+      const crown = new THREE.Mesh(crownGeo, crownMats[Math.floor(rng() * crownMats.length)]);
+      crown.position.y = 6; crown.castShadow = true;
       tree.add(trunk); tree.add(crown);
       tree.scale.setScalar(s);
       tree.position.set(x, h - 0.2, z);

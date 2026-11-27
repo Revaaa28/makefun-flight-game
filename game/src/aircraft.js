@@ -37,10 +37,12 @@ export function buildKestrel() {
     const tailBand = part(new THREE.BoxGeometry(0.04, 0.5, 0.9), red, s * 0.47, 0.34, 4.6);
     tailBand.rotation.x = 0.1; g.add(tailBand);
   }
-  // Cabin glass: lower-profile (0.5 tall, sunk into the body) and a
-  // tinted glass blue-grey — light enough to read as glass, not the
-  // near-black box it was before.
-  const glass = part(new THREE.BoxGeometry(1.25, 0.5, 2.0), 0x7d9eb2, 0, 0.82, -0.7); g.add(glass);
+  // Cabin glass: lower-profile (0.5 tall, sunk into the body), now a
+  // dark glossy tint — Phong with a bright sky specular, so the canopy
+  // throws a highlight like real perspex instead of reading as paint.
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.5, 2.0),
+    new THREE.MeshPhongMaterial({ color: 0x18242f, specular: 0xbfd9ee, shininess: 90 }));
+  glass.position.set(0, 0.82, -0.7); glass.castShadow = true; g.add(glass);
   // High wing with red tips and visible taper + dihedral via two
   // panels per side: a wide-chord inner panel and a narrower-chord,
   // thinner outer panel set higher, so the wing steps down in chord
@@ -105,6 +107,15 @@ export function buildKestrel() {
   const blade = part(new THREE.BoxGeometry(0.28, 3.4, 0.08), 0x3a2e24, 0, 0, 0); prop.add(blade);
   const spinner = part(new THREE.ConeGeometry(0.34, 0.8, 8), red, 0, 0, -0.3);
   spinner.rotation.x = -Math.PI / 2; prop.add(spinner);
+  // The blur disc a running prop actually shows: a faint dark glass of
+  // a circle at the blade plane, so a still of the Kestrel under power
+  // reads as an engine turning, not a parked cross.
+  const blur = new THREE.Mesh(new THREE.CircleGeometry(1.72, 28),
+    new THREE.MeshBasicMaterial({
+      color: 0x35302a, transparent: true, opacity: 0.16,
+      side: THREE.DoubleSide, depthWrite: false,
+    }));
+  blur.position.z = 0.03; prop.add(blur);
   prop.position.set(0, 0, -4.85);
   g.add(prop);
   g.userData.prop = prop;

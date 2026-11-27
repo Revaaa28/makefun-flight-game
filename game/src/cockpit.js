@@ -91,10 +91,19 @@ function airspeedFace() {
 function panelPlateTexture() {
   const [cv, g] = makeCanvas(1024, 384);
   const rng = mulberry32(7);
-  g.fillStyle = '#221e1c'; g.fillRect(0, 0, 1024, 384);
-  for (let i = 0; i < 900; i++) {
+  g.fillStyle = '#27231f'; g.fillRect(0, 0, 1024, 384);
+  // A soft sheen falling from the top edge, like light off brushed
+  // metal, over a denser grain of pale and dark vertical strokes.
+  const sheen = g.createLinearGradient(0, 0, 0, 384);
+  sheen.addColorStop(0, 'rgba(255,236,200,0.07)');
+  sheen.addColorStop(0.45, 'rgba(255,236,200,0.015)');
+  sheen.addColorStop(1, 'rgba(0,0,0,0.10)');
+  g.fillStyle = sheen; g.fillRect(0, 0, 1024, 384);
+  for (let i = 0; i < 1700; i++) {
     const x = rng() * 1024;
-    g.strokeStyle = `rgba(255,255,255,${rng() * 0.03})`;
+    g.strokeStyle = rng() > 0.42
+      ? `rgba(255,255,255,${0.02 + rng() * 0.05})`
+      : `rgba(0,0,0,${0.03 + rng() * 0.05})`;
     g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 384); g.stroke();
   }
   for (const [x, y] of [[26, 26], [998, 26], [26, 358], [998, 358]]) {
@@ -116,7 +125,7 @@ function buildGauge(radius, faceTexture, withNeedle = true) {
   const grp = new THREE.Group();
   const bezel = new THREE.Mesh(
     new THREE.CylinderGeometry(radius * 1.14, radius * 1.14, 0.045, 26),
-    darkMetal());
+    darkMetal(0x4b4f55));
   bezel.rotation.x = Math.PI / 2;
   grp.add(bezel);
   const pivot = new THREE.Group();

@@ -6,6 +6,7 @@
 
 import { WORLD, COLORS, RUNWAY } from './config.js';
 import { Terrain, heightAt } from './terrain.js';
+import { Scenery } from './scenery.js';
 import { Aircraft } from './aircraft.js';
 import { Missions } from './missions.js';
 import { CameraRig, applyShotCamera } from './camera.js';
@@ -39,7 +40,7 @@ const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerH
   const geo = new THREE.SphereGeometry(4200, 24, 14);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const top = new THREE.Color(0x51689c), mid = new THREE.Color(COLORS.sky), low = new THREE.Color(COLORS.skyLow);
+  const top = new THREE.Color(0x42619e), mid = new THREE.Color(COLORS.sky), low = new THREE.Color(COLORS.skyLow);
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const t = Math.max(0, Math.min(1, pos.getY(i) / 4200 + 0.12));
@@ -93,6 +94,7 @@ const clouds = new THREE.Group();
 }
 
 const terrain = new Terrain(scene);
+const scenery = new Scenery(scene);
 const plane = new Aircraft(scene);
 const missions = new Missions(scene);
 const wind = new Wind();
@@ -189,6 +191,7 @@ function loop(now) {
   }
 
   terrain.update(dt, t);
+  scenery.update(dt);
   clouds.children.forEach((cl, i) => { cl.position.x += dt * (1.1 + i * 0.22); if (cl.position.x > 2400) cl.position.x = -2400; });
   sun.target.position.copy(plane.pos);
   if (frozen && shot === 'landing') {
