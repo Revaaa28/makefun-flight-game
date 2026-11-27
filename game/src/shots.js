@@ -77,30 +77,49 @@ export function poseShot(name, ctx) {
     // the windscreen — the moment rotation starts, the nose hides it.
     plane.placeAirborne(RUNWAY.x + 3, RUNWAY.height + 1.95, RUNWAY.z - 160, Math.PI, 23);
     plane.throttle = 1;
-    stepN(ctx, 3, () => ({ pitch: 0, roll: 0, throttleDelta: 0, brake: false }));
+    // v3: let the roll run long — 150 steps at full throttle winds the
+    // ASI up to ~SPD 078 (the ground-roll model's terminal is ~40 m/s)
+    // so the panel reads FLOWN, a breath from rotation, instead of
+    // parked at 46 kt. Still no pitch input: the runway stays framed.
+    stepN(ctx, 150, () => ({ pitch: 0, roll: 0, throttleDelta: 0, brake: false }));
     return true;
   }
   if (name === 'rings') {
     missions.beginSortie(0);
+    // v3: tighten the lens (62° → 54°) so the Kestrel fills clearly
+    // more of the frame at contact-sheet size; the nested-rings
+    // composition is unchanged. (48° was tried first and cropped
+    // both plane and ring — 54° is the widest tightening that keeps
+    // the ring whole.)
+    if (ctx.rig && ctx.rig.camera) {
+      ctx.rig.camera.fov = 54;
+      ctx.rig.camera.updateProjectionMatrix();
+    }
     // Two rings already threaded, the third dead ahead down the valley.
     missions.ringIndex = 2; missions.score = 240; missions.paintRings();
     const ring = missions.rings[2];
     const start = ring.clone(); start.z += 210; start.y += 16; start.x += 18;
     const heading = Math.atan2(ring.x - start.x, -(ring.z - start.z));
     plane.placeAirborne(start.x, start.y, start.z, heading, 33);
-    // Fly the real sim until the plane is ~46 m out — the ring large in
+    // Fly the real sim until the plane is ~50 m out — the ring large in
     // the centre of the frame but whole, its halo a hint instead of a
     // wash, the Kestrel big in the lower-centre foreground.
     for (let i = 0; i < 260; i++) {
       const controls = autopilot(plane, ring, 0.66);
       stepOnce(ctx, controls);
       if (plane.crashed) break;
-      if (plane.pos.distanceTo(ring) < 46) break;
+      if (plane.pos.distanceTo(ring) < 50) break;
     }
     return true;
   }
   if (name === 'drop') {
     missions.beginSortie(1);
+    // v3: same tighter lens as the rings scene — plane and falling
+    // bag both read bigger in the small contact-sheet cell.
+    if (ctx.rig && ctx.rig.camera) {
+      ctx.rig.camera.fov = 48;
+      ctx.rig.camera.updateProjectionMatrix();
+    }
     const t = missions.targets[0];
     // A low run-in (+38 m start, aiming +28 m over the pad) so the
     // village houses and pad read big in the lower frame, still well
@@ -109,8 +128,11 @@ export function poseShot(name, ctx) {
     const heading = Math.atan2(t.pos.x - start.x, -(t.pos.z - start.z));
     plane.placeAirborne(start.x, start.y, start.z, heading, 29);
     // Fly the real sim in, release the bag over the pad, then freeze
-    // ~25 steps (~0.8 s) later: plane large in frame, the bag visibly
-    // HANGING below the plane, the village pad still in frame below.
+    // just 12 steps (~0.4 s) later — v3: the bag is still close under
+    // the plane and LARGE in frame, the pad still below, and the
+    // objective line up top already reads "bags 2". (No centre-screen
+    // message: main.js deliberately clears missions.message in shot
+    // mode, so the falling bag itself tells the story.)
     let dropped = false;
     let sinceDrop = 0;
     for (let i = 0; i < 420; i++) {
@@ -120,7 +142,7 @@ export function poseShot(name, ctx) {
       if (!dropped && d < 55) { missions.dropBag(plane); dropped = true; }
       stepOnce(ctx, controls);
       if (plane.crashed) break;
-      if (dropped && ++sinceDrop >= 25) break;
+      if (dropped && ++sinceDrop >= 12) break;
     }
     return true;
   }
