@@ -86,6 +86,7 @@ export class Terrain {
     this.buildTurbines(scene);
     this.buildVegetation(scene);
     this.buildFields(scene);
+    this.buildRoads(scene);
   }
 
   buildGround(scene) {
@@ -118,7 +119,7 @@ export class Terrain {
     const verts = [], idx = [];
     pts.forEach((z, i) => {
       const cx = riverX(z);
-      verts.push(cx - 34, WORLD.waterLevel, z, cx + 34, WORLD.waterLevel, z);
+      verts.push(cx - 42, WORLD.waterLevel, z, cx + 42, WORLD.waterLevel, z);
       if (i > 0) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
     });
     const geo = new THREE.BufferGeometry();
@@ -270,24 +271,94 @@ export class Terrain {
   }
 
   buildFields(scene) {
-    // Terraced field strips on the west slope: flat coloured quads that
-    // follow the slope in steps.
+    // The valley's patchwork: two clusters of big, saturated plots —
+    // rice green, young rice, ripe gold, fresh-ploughed brown — each on
+    // a slightly larger dark border quad so the plots read as worked
+    // land with edges, not confetti. One cluster terraces the west
+    // slope; the other surrounds the village.
     const rng = mulberry32(SEED + 202);
-    const cols = [0xa8832f, 0x5d8c34, 0xbb9845, 0x4c752c];
-    for (let i = 0; i < 26; i++) {
-      const x = -560 + rng() * 260, z = -240 + rng() * 780;
-      const w = 46 + rng() * 40, d = 20 + rng() * 16;
-      const y = heightAt(x, z);
-      if (y < WORLD.waterLevel + 2 || y > 90) continue;
-      const f = new THREE.Mesh(
-        new THREE.PlaneGeometry(w, d),
-        new THREE.MeshLambertMaterial({ color: cols[i % cols.length] }));
-      f.rotation.x = -Math.PI / 2;
-      f.rotation.z = rng() * 0.6 - 0.3;
-      f.position.set(x, y + 0.25, z);
-      f.receiveShadow = true;
-      scene.add(f);
+    const cols = [0x77b13c, 0x9cc24a, 0xc9a227, 0x8a5a30, 0x5da244];
+    const borderMat = new THREE.MeshLambertMaterial({ color: 0x44542a });
+    const mats = cols.map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const clusters = [
+      { x0: -640, x1: -240, z0: -320, z1: 620, n: 20 },
+      { x0: 40, x1: 460, z0: 360, z1: 940, n: 18 },
+    ];
+    for (const cl of clusters) {
+      for (let i = 0; i < cl.n; i++) {
+        const x = cl.x0 + rng() * (cl.x1 - cl.x0);
+        const z = cl.z0 + rng() * (cl.z1 - cl.z0);
+        const w = 55 + rng() * 60, d = 24 + rng() * 22;
+        const y = heightAt(x, z);
+        if (y < WORLD.waterLevel + 2 || y > 95) continue;
+        if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < 70) continue;
+        const rot = [0, 0.14, -0.12, Math.PI / 2, Math.PI / 2 + 0.1][Math.floor(rng() * 5)];
+        const border = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.06, d * 1.1), borderMat);
+        border.rotation.x = -Math.PI / 2; border.rotation.z = rot;
+        border.position.set(x, y + 0.18, z);
+        border.receiveShadow = true;
+        scene.add(border);
+        const f = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mats[Math.floor(rng() * mats.length)]);
+        f.rotation.x = -Math.PI / 2; f.rotation.z = rot;
+        f.position.set(x, y + 0.32, z);
+        f.receiveShadow = true;
+        scene.add(f);
+      }
     }
+  }
+
+  // A dirt ribbon over the ground: a triangle strip whose edges sit on
+  // the terrain, wide enough to read from altitude as a track.
+  ribbon(scene, points, width, color, lift = 0.3) {
+    const verts = [], idx = [];
+    const mat = new THREE.MeshLambertMaterial({ color });
+    points.forEach(([x, z], i) => {
+      const [nx, nz] = points[Math.min(i + 1, points.length - 1)];
+      const [px, pz] = points[Math.max(i - 1, 0)];
+      let dx = nx - px, dz = nz - pz;
+      const len = Math.max(1, Math.hypot(dx, dz));
+      dx /= len; dz /= len;
+      const ox = -dz * width / 2, oz = dx * width / 2;
+      verts.push(
+        x + ox, heightAt(x + ox, z + oz) + lift, z + oz,
+        x - ox, heightAt(x - ox, z - oz) + lift, z - oz);
+      if (i > 0) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+  }
+
+  buildRoads(scene) {
+    // Dirt roads give the valley its map: a track down the river's east
+    // bank, the bridge crossing to the village, and the long connector
+    // from the village up to Kestrel Field's threshold — the route the
+    // mail actually travels when the Kestrel cannot fly.
+    const bank = [];
+    for (let z = -2050; z <= 2050; z += 50) bank.push([riverX(z) + 64, z]);
+    this.ribbon(scene, bank, 7.5, 0x9a7d55);
+    const sample = (waypoints, step) => {
+      const out = [];
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        const [ax, az] = waypoints[i], [bx, bz] = waypoints[i + 1];
+        const n = Math.max(2, Math.round(Math.hypot(bx - ax, bz - az) / step));
+        for (let j = (i === 0 ? 0 : 1); j <= n; j++) {
+          out.push([ax + (bx - ax) * j / n, az + (bz - az) * j / n]);
+        }
+      }
+      return out;
+    };
+    const bridgeX = riverX(300);
+    this.ribbon(scene, sample([
+      [bridgeX + 60, 300], [bridgeX - 30, 380], [268, 500], [VILLAGE.x + 8, VILLAGE.z - 6],
+    ], 26), 7, 0x9a7d55);
+    this.ribbon(scene, sample([
+      [VILLAGE.x + 8, VILLAGE.z - 6], [330, 240], [468, -360], [556, -960],
+      [606, -1300], [RUNWAY.x, RUNWAY.z + RUNWAY.length / 2 + 6],
+    ], 30), 7, 0x8f7350);
   }
 
   buildVegetation(scene) {

@@ -95,11 +95,12 @@ export class Hud {
     this.tape(W - 96, H / 2 - 110, 220, altFt, 100, 'ALTITUDE', 'ft');
 
     // Digital readouts, bottom left cluster.
-    this.panel(22, H - 118, 252, 96, 0.55);
-    this.text(`SPD ${String(knots).padStart(3, '0')} kt`, 38, H - 92, 16, '#fff3d6');
-    this.text(`ALT ${String(altFt).padStart(4, '0')} ft`, 38, H - 66, 16, '#fff3d6');
-    this.text(`HDG ${String(hdg).padStart(3, '0')}°`, 158, H - 92, 16, '#fff3d6');
-    this.text(`V/S ${vs >= 0 ? '+' : ''}${Math.round(vs)}`, 158, H - 66, 16, vs < -600 ? '#ff8a70' : '#fff3d6');
+    this.panel(22, H - 146, 252, 124, 0.55);
+    this.text(`SPD ${String(knots).padStart(3, '0')} kt`, 38, H - 120, 16, '#fff3d6');
+    this.text(`ALT ${String(altFt).padStart(4, '0')} ft`, 38, H - 94, 16, '#fff3d6');
+    this.text(`HDG ${String(hdg).padStart(3, '0')}°`, 158, H - 120, 16, '#fff3d6');
+    this.text(`V/S ${vs >= 0 ? '+' : ''}${Math.round(vs)}`, 158, H - 94, 16, vs < -600 ? '#ff8a70' : '#fff3d6');
+    if (state.wind) this.windLine(38, H - 66, state.wind, plane);
     if (plane.stalled && !plane.onGround) this.text('STALL', 96, H - 38, 15, '#ff5340', 'center');
     else if (plane.onGround) this.text('ON GROUND', 96, H - 38, 12, '#b7e3a8', 'center', false);
     else this.text('AIRBORNE', 96, H - 38, 12, '#b7e3a8', 'center', false);
@@ -116,6 +117,33 @@ export class Hud {
       this.text(missions.message, W / 2, H * 0.3, 21, '#ffe9c4', 'center');
     }
     if (mode === 'flying' && state.hint) this.text(state.hint, W / 2, H - 13, 12, 'rgba(255,243,214,0.85)', 'center', false);
+  }
+
+  // The wind line: direction it blows FROM and its strength, an arrow
+  // showing where it sits against the nose, and the crosswind part in
+  // amber when it is strong enough to matter on final.
+  windLine(x, y, wind, plane) {
+    const c = this.ctx;
+    const from = String(Math.round(wind.fromDeg)).padStart(3, '0');
+    const kt = String(Math.round(wind.speedKt())).padStart(2, '0');
+    this.text(`WIND ${from}°/${kt} kt`, x, y, 16, '#fff3d6');
+    const { cross } = wind.components(plane.heading);
+    if (Math.abs(cross) > 4) {
+      this.text(`XW ${Math.abs(Math.round(cross * 1.944))}`, x + 200, y, 13, '#ffb35c', 'right');
+    }
+    // A small arrow in a ring: pointing up means on the nose, and it
+    // swings with the wind's bearing relative to the heading.
+    const cx = x + 218, cy = y, r = 11;
+    c.strokeStyle = 'rgba(255,196,107,0.7)'; c.lineWidth = 1.5;
+    c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke();
+    const a = wind.relativeDeg(plane.headingDeg()) * Math.PI / 180;
+    c.save();
+    c.translate(cx, cy); c.rotate(a);
+    c.strokeStyle = '#ffc46b'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(0, 7); c.lineTo(0, -6); c.stroke();
+    c.fillStyle = '#ffc46b';
+    c.beginPath(); c.moveTo(0, -10); c.lineTo(-4, -3); c.lineTo(4, -3); c.closePath(); c.fill();
+    c.restore();
   }
 
   // Artificial horizon: a disc whose sky/ground split rolls and pitches

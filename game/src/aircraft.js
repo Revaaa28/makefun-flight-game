@@ -26,6 +26,17 @@ export function buildKestrel() {
   nose.rotation.x = Math.PI / 2; g.add(nose);
   const tailCone = part(new THREE.CylinderGeometry(0.16, 0.62, 3.8, 8), cream, 0, 0.3, 5.5);
   tailCone.rotation.x = Math.PI / 2; g.add(tailCone);
+  // Livery: a red cheatline swept down each side of the fuselage, a
+  // matching band around the tail cone, and a thin gold pinstripe under
+  // it — paint is what turns a cream box into an aeroplane with an owner.
+  for (const s of [-1, 1]) {
+    const cheat = part(new THREE.BoxGeometry(0.04, 0.34, 6.9), red, s * 0.72, 0.12, 0.55);
+    cheat.rotation.x = 0.035; g.add(cheat);
+    const pin = part(new THREE.BoxGeometry(0.04, 0.09, 6.9), 0xd9a441, s * 0.72, -0.12, 0.55);
+    pin.rotation.x = 0.035; g.add(pin);
+    const tailBand = part(new THREE.BoxGeometry(0.04, 0.5, 0.9), red, s * 0.47, 0.34, 4.6);
+    tailBand.rotation.x = 0.1; g.add(tailBand);
+  }
   // Cabin glass: lower-profile (0.5 tall, sunk into the body) and a
   // tinted glass blue-grey — light enough to read as glass, not the
   // near-black box it was before.
@@ -33,15 +44,21 @@ export function buildKestrel() {
   // High wing with red tips and visible taper + dihedral via two
   // panels per side: a wide-chord inner panel and a narrower-chord,
   // thinner outer panel set higher, so the wing steps down in chord
-  // toward the tip instead of reading as one flat tabletop.
+  // toward the tip instead of reading as one flat tabletop. The wing
+  // pieces ride in one subgroup so the cockpit camera can hide them:
+  // from the pilot's seat of a high-wing ship the wing sits above and
+  // behind the pilot's head, never across the instrument panel.
+  const wingGroup = new THREE.Group();
+  g.add(wingGroup);
+  g.userData.wing = wingGroup;
   for (const s of [-1, 1]) {
     const wing = part(new THREE.BoxGeometry(3.4, 0.18, 1.9), cream, s * 1.95, 1.15, -0.6);
-    wing.rotation.z = s * 0.07; g.add(wing);
+    wing.rotation.z = s * 0.07; wingGroup.add(wing);
     const outer = part(new THREE.BoxGeometry(2.6, 0.13, 1.35), cream, s * 4.85, 1.42, -0.6);
-    outer.rotation.z = s * 0.11; g.add(outer);
-    const tip = part(new THREE.BoxGeometry(0.8, 0.15, 1.3), red, s * 6.35, 1.62, -0.6); g.add(tip);
+    outer.rotation.z = s * 0.11; wingGroup.add(outer);
+    const tip = part(new THREE.BoxGeometry(0.8, 0.15, 1.3), red, s * 6.35, 1.62, -0.6); wingGroup.add(tip);
     const strut = part(new THREE.BoxGeometry(0.12, 1.3, 0.12), red, s * 1.15, 0.45, -0.6);
-    strut.rotation.z = s * 0.5; g.add(strut);
+    strut.rotation.z = s * 0.5; wingGroup.add(strut);
   }
   // Tail feathers. The fin is smaller and thinner than the old solid
   // red wedge, cream like the fuselage, with just a red tip cap.
@@ -57,6 +74,32 @@ export function buildKestrel() {
   }
   const tailWheel = part(new THREE.CylinderGeometry(0.26, 0.26, 0.2, 8), 0x222222, 0, -0.55, 6.4);
   tailWheel.rotation.z = Math.PI / 2; g.add(tailWheel);
+  // Small fittings a real airframe carries, each one a glint in a photo:
+  // wingtip navigation lights (port red, starboard green, steady so they
+  // read in a still), a white tail light, a red beacon on the fin,
+  // a cabin-top antenna mast with its wire run to the fin, a pitot tube
+  // under the port wing and a stub exhaust on the nose's right cheek.
+  const lamp = (color, x, y, z, r = 0.13) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8),
+      new THREE.MeshBasicMaterial({ color }));
+    m.position.set(x, y, z); g.add(m); return m;
+  };
+  const navPort = lamp(0xff2a1a, -6.78, 1.62, -0.6);   // port
+  wingGroup.add(navPort);
+  const navStbd = lamp(0x2aff5a, 6.78, 1.62, -0.6);    // starboard
+  wingGroup.add(navStbd);
+  lamp(0xfff6dd, 0, 0.62, 7.55, 0.1);         // tail
+  lamp(0xff3524, 0, 1.98, 6.9, 0.09);         // fin beacon
+  const mast = part(new THREE.CylinderGeometry(0.035, 0.05, 0.55, 6), 0x333333, 0, 1.32, -0.5); g.add(mast);
+  const wire = part(new THREE.BoxGeometry(0.02, 0.02, 7.3), 0x222222, 0, 1.85, 3.1);
+  wire.rotation.x = 0.075; g.add(wire);
+  const pitot = part(new THREE.CylinderGeometry(0.035, 0.035, 0.85, 6), 0x999999, -3.4, 0.95, -1.15);
+  pitot.rotation.x = Math.PI / 2; g.add(pitot);
+  const exhaust = part(new THREE.CylinderGeometry(0.09, 0.11, 0.55, 6), 0x4a3a30, 0.62, -0.42, -3.6);
+  exhaust.rotation.x = Math.PI / 2 - 0.35; g.add(exhaust);
+  const lander = part(new THREE.CircleGeometry(0.16, 10), 0xfff2c0, -2.6, 1.13, -1.56);
+  lander.rotation.y = Math.PI;               // face the lamp forward, down the nose line
+  g.add(lander);
   // The propeller: two blades and a spinner, spun by the engine in update.
   const prop = new THREE.Group();
   const blade = part(new THREE.BoxGeometry(0.28, 3.4, 0.08), 0x3a2e24, 0, 0, 0); prop.add(blade);
@@ -110,8 +153,12 @@ export class Aircraft {
   }
 
   // One physics step. controls: {pitch, roll, throttleDelta, brake} in -1..1.
+  // wind, when given, is a sampled Wind: the air mass itself moves, so a
+  // headwind lifts the wing before the ground says you are fast, a
+  // tailwind steals that lift, a crosswind drifts the airframe sideways
+  // over the ground, and gusts worry the roll a little.
   // Returns events that happened this step: {landed, crashed}.
-  step(dt, controls, terrainFn = heightAt) {
+  step(dt, controls, terrainFn = heightAt, wind = null) {
     const events = {};
     if (this.crashed) return events;
     // Throttle and fuel.
@@ -126,6 +173,9 @@ export class Aircraft {
 
     if (this.onGround) {
       this.pos.y = groundY;
+      // On the ground the wing already feels the wind: a headwind lets
+      // her rotate early, a tailwind keeps her rolling.
+      const groundAir = wind ? this.speed + wind.components(this.heading).head : this.speed;
       // Ground roll: thrust accelerates, drag and brakes slow.
       const thrust = this.throttle * FLIGHT.accel;
       this.speed += (thrust - FLIGHT.drag * this.speed * this.speed) * dt;
@@ -137,13 +187,13 @@ export class Aircraft {
       this.heading += controls.roll * dt * Math.min(0.5, this.speed / 40);
       this.roll *= Math.pow(0.0001, dt);
       // Pitch: only able to rotate once fast enough.
-      if (controls.pitch > 0 && this.speed > FLIGHT.rotateSpeed) {
+      if (controls.pitch > 0 && groundAir > FLIGHT.rotateSpeed) {
         this.pitch = Math.min(0.22, this.pitch + controls.pitch * FLIGHT.maxPitchRate * dt);
       } else {
         this.pitch = Math.max(0, this.pitch - dt * 1.4);
       }
       this.vy = 0;
-      if (this.pitch > 0.03 && this.speed > FLIGHT.rotateSpeed) {
+      if (this.pitch > 0.03 && groundAir > FLIGHT.rotateSpeed) {
         // Liftoff: give the plane a real climb and a step off the surface,
         // so the ground check at the top of the next step cannot mistake
         // it for still rolling (vy 0 at ground height reads as landed).
@@ -159,6 +209,12 @@ export class Aircraft {
       this.pitch -= this.pitch * dt * 0.35;
       const targetRoll = controls.roll * 1.05;
       this.roll += (targetRoll - this.roll) * Math.min(1, dt * 5.5);
+      // Gusts worry the roll: a slow worry, phased by where the plane is,
+      // so crossing the valley in rough air is a small fight for level.
+      if (wind) {
+        this.roll += wind.turbulence()
+          * Math.sin(this.pos.x * 0.045 + this.pos.z * 0.03) * dt * 0.5;
+      }
       // Bank turns the plane; turn rate grows with speed up to cruise.
       // Sign check: banking right (roll > 0) must swing the nose toward
       // +x when facing north, and forward.x is sin(heading) — so heading
@@ -168,11 +224,17 @@ export class Aircraft {
       const thrust = this.throttle * FLIGHT.accel;
       this.speed += (thrust - FLIGHT.drag * this.speed * this.speed - Math.sin(this.pitch) * 11) * dt;
       this.speed = Math.max(0, this.speed);
-      // Lift: full at and above the stall speed, fading below it.
-      const lift = Math.min(1, this.speed / FLIGHT.stallSpeed);
+      // Lift: full at and above the stall speed, fading below it. The
+      // wing feels AIRspeed — ground speed plus the headwind part — so a
+      // stiff headwind holds her up at a crawl over the ground and a
+      // tailwind drops her sooner than the dial suggests.
+      const airSpeed = wind
+        ? Math.max(0, this.speed + wind.components(this.heading).head)
+        : this.speed;
+      const lift = Math.min(1, airSpeed / FLIGHT.stallSpeed);
       this.stalled = lift < 0.999;
       const fwd = this.forward();
-      const climb = fwd.y * this.speed * (0.35 + 0.65 * lift);
+      const climb = fwd.y * airSpeed * (0.35 + 0.65 * lift);
       const stallSink = (1 - lift) * FLIGHT.gravitySink;
       const bankSink = (1 - Math.cos(this.roll)) * this.speed * 0.22;
       this.vy = climb - stallSink - bankSink;
@@ -181,6 +243,11 @@ export class Aircraft {
       this.pos.x += fwd.x * this.speed * dt;
       this.pos.z += fwd.z * this.speed * dt;
       this.pos.y += this.vy * dt;
+      // The air mass itself moves over the ground: the wind drifts her.
+      if (wind) {
+        this.pos.x += wind.vec.x * dt;
+        this.pos.z += wind.vec.z * dt;
+      }
     }
 
     if (!this.onGround) {

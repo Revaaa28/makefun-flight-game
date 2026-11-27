@@ -7,8 +7,8 @@ export const WORLD = {
   size: 4200,          // the valley is a square this many metres across
   segments: 128,       // heightfield resolution
   waterLevel: 4.5,     // river and lake surface height
-  fogNear: 500,
-  fogFar: 3400,
+  fogNear: 800,
+  fogFar: 4300,
 };
 
 // The runway at Kestrel Field: a flat plateau strip running north-south.
@@ -39,16 +39,28 @@ export const FLIGHT = {
   brakeDecel: 10,
 };
 
+// The valley wind: a steady flow that veers slowly, with gusts riding on
+// it. Speeds in m/s; the flight model drifts and lifts on it, the HUD
+// reads it out, and a stiff crosswind on final is a real decision.
+export const WIND = {
+  baseSpeed: 4.5,        // the valley's usual evening flow
+  gustAmp: 3.2,          // gusts add up to this much on top
+  gustFreq: 0.11,        // gust swell rate, rad/s of sim time
+  veerDeg: 38,           // the direction wanders this far either side
+  veerFreq: 0.021,       // veer rate, rad/s of sim time
+  homeDeg: 255,          // prevailing flow: out of the west-southwest
+};
+
 export const COLORS = {
   sky: 0xffb36b,
   skyLow: 0xff8c4a,
   fog: 0xf7a55c,
   sun: 0xffd9a0,
-  water: 0x1f6fb4,
-  sand: 0xc7a55e,
-  grass: 0x4e7c31,
-  grassDry: 0x99833a,
-  forest: 0x2c5226,
+  water: 0x1778c9,
+  sand: 0xd2b264,
+  grass: 0x58902f,
+  grassDry: 0xa8903c,
+  forest: 0x2e5c24,
   rock: 0x776c60,
   snow: 0xf3e9dc,
   fuselage: 0xf3e6cf,   // cream

@@ -90,13 +90,14 @@ export class Missions {
     this.rings = ringPositions();
     this.ringGlows = [];
     this.ringMeshes = this.rings.map((p, i) => {
-      // Thick torus with a strong emissive gold so the gate itself
-      // glows, not just its paint.
+      // The torus with a warm emissive gold so the gate itself glows,
+      // not just its paint — held under the halo's old glare, so the
+      // ring reads as a ring and not a blob of light.
       const m = new THREE.Mesh(
         new THREE.TorusGeometry(RING_RADIUS, 1.9, 12, 30),
         new THREE.MeshLambertMaterial({
           color: i === 0 ? COLORS.ring : 0xb98a4a,
-          emissive: 0xff9d00, emissiveIntensity: 0.9,
+          emissive: 0xff9d00, emissiveIntensity: 0.7,
         }));
       m.position.copy(p);
       scene.add(m);
@@ -107,13 +108,14 @@ export class Missions {
       core.position.copy(p);
       scene.add(core);
       this.ringGlows.push(core);
-      // An additive glow billboard halo, several times the ring's size,
-      // so the target pops at a glance even shrunk by distance/fog.
+      // An additive glow billboard halo around the ring, wide enough to
+      // spot down the valley but kept faint — a hint of light, not a
+      // second sun: the torus and its bright core do the reading.
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({
         map: ringGlowTexture(), color: 0xffc95e, transparent: true,
-        opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false,
+        opacity: 0.26, blending: THREE.AdditiveBlending, depthWrite: false,
       }));
-      halo.scale.setScalar(RING_RADIUS * 4.6);
+      halo.scale.setScalar(RING_RADIUS * 2.2);
       halo.position.copy(p);
       scene.add(halo);
       this.ringGlows.push(halo);

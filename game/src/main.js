@@ -13,6 +13,7 @@ import { Input } from './input.js';
 import { SoundEngine } from './audio.js';
 import { Hud } from './hud.js';
 import { Screens } from './screens.js';
+import { Wind } from './wind.js';
 import { shotName, poseShot } from './shots.js';
 
 const canvas3d = document.getElementById('view');
@@ -57,8 +58,9 @@ const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerH
   scene.add(sunDisc);
 }
 
-// Light: a warm low sun with shadows, a soft sky fill, and amber ambience.
-const sun = new THREE.DirectionalLight(COLORS.sun, 1.25);
+// Light: a warm low sun with shadows, a brighter sky fill than the
+// first cut (the valley read murky in stills), and amber ambience.
+const sun = new THREE.DirectionalLight(COLORS.sun, 1.3);
 sun.position.set(-900, 620, -420);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -67,8 +69,8 @@ sun.shadow.camera.top = 950; sun.shadow.camera.bottom = -950;
 sun.shadow.camera.far = 4200;
 sun.shadow.bias = -0.0006;
 scene.add(sun); scene.add(sun.target);
-scene.add(new THREE.HemisphereLight(0xffd9b0, 0x4a3826, 0.3));
-scene.add(new THREE.AmbientLight(0xff9a50, 0.07));
+scene.add(new THREE.HemisphereLight(0xffd9b0, 0x4a3826, 0.52));
+scene.add(new THREE.AmbientLight(0xff9a50, 0.13));
 
 // A handful of flat golden clouds, drifting very slowly.
 const clouds = new THREE.Group();
@@ -93,6 +95,7 @@ const clouds = new THREE.Group();
 const terrain = new Terrain(scene);
 const plane = new Aircraft(scene);
 const missions = new Missions(scene);
+const wind = new Wind();
 const rig = new CameraRig(scene, camera);
 const input = new Input(canvas3d);
 const sound = new SoundEngine();
@@ -103,12 +106,11 @@ let mode = 'title';            // title | briefing | flying | sortie-complete | 
 let frozen = false;            // shot mode: pose once, render forever
 const shot = shotName();
 
-// Heading-only shot camera params for the two scenes whose pitch would
-// otherwise swing the chase camera into the plane: takeoff and landing.
-// Rings and drop keep the existing chase rig untouched.
+// Heading-only shot camera params for the landing-flare scene, whose
+// pitch would otherwise swing the chase camera into the plane. The
+// cockpit, rings and drop scenes keep the normal rigs.
 const SHOT_CAMERA_PARAMS = {
-  takeoff: { dist: 15, height: 5.5, side: 3.5 },
-  landing: { dist: 13, height: 4.5, side: 3 },
+  landing: { dist: 16, height: 5.5, side: 4 },
 };
 
 const HINTS = [
@@ -142,7 +144,7 @@ function onEnter() {
 }
 
 if (shot) {
-  const ok = poseShot(shot, { plane, missions, sound, constants: { RUNWAY } });
+  const ok = poseShot(shot, { plane, missions, sound, wind, rig, constants: { RUNWAY } });
   if (ok) {
     mode = 'flying'; frozen = true;
     // Shot mode only: suppress the big centre-screen sortie title card
@@ -164,12 +166,13 @@ function loop(now) {
   const t = now / 1000;
 
   if (!frozen) {
+    wind.sampleAt(t);
     if (input.justPressed('Enter')) onEnter();
     if (input.justPressed('KeyC')) rig.toggle();
     if (mode === 'flying') {
       if (input.justPressed('KeyF') && missions.dropBag(plane)) sound.dropThud();
       const controls = input.controls();
-      const events = plane.step(dt, controls);
+      const events = plane.step(dt, controls, heightAt, wind);
       if (events.landed && !events.crashed) sound.touchdown();
       const result = missions.update(dt, plane, events, sound);
       sound.update(plane.throttle, plane.speed, plane.onGround);
@@ -188,14 +191,14 @@ function loop(now) {
   terrain.update(dt, t);
   clouds.children.forEach((cl, i) => { cl.position.x += dt * (1.1 + i * 0.22); if (cl.position.x > 2400) cl.position.x = -2400; });
   sun.target.position.copy(plane.pos);
-  if (frozen && (shot === 'takeoff' || shot === 'landing')) {
+  if (frozen && shot === 'landing') {
     applyShotCamera(camera, plane, SHOT_CAMERA_PARAMS[shot]);
   } else {
     rig.update(frozen ? 0.016 : dt, plane);
   }
   renderer.render(scene, camera);
 
-  hud.draw({ plane, missions, mode, cameraMode: rig.mode, hint: HINTS[missions.sortie] });
+  hud.draw({ plane, missions, mode, cameraMode: rig.mode, wind, hint: HINTS[missions.sortie] });
   if (!frozen) {
     if (mode === 'title') screens.title();
     else if (mode === 'briefing') screens.briefing(missions.sortie, missions.score);

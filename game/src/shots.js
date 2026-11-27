@@ -1,9 +1,10 @@
 // shots.js — the ?shot= scenes used for the game's screenshots. Each one
 // resets the world with the fixed seed, then steps the REAL simulation —
-// the same aircraft step and mission update the game loop runs — under a
-// small autopilot aimed at the scene's objective, for a fixed number of
-// fixed-length steps. The frame it stops on is a genuine composed moment
-// of play (HUD lit, rings live, bag falling), and main.js then freezes it.
+// the same aircraft step (wind included) and mission update the game
+// loop runs — under a small autopilot aimed at the scene's objective,
+// for a fixed number of fixed-length steps. The frame it stops on is a
+// genuine composed moment of play (HUD lit, rings live, bag falling),
+// and main.js then freezes it.
 
 import { heightAt } from './terrain.js';
 
@@ -31,13 +32,26 @@ export function autopilot(plane, target, throttle) {
   return { pitch, roll, throttleDelta: 0, brake: false };
 }
 
+// One stepped second of shot time starts at this offset into the wind's
+// cycle, so the scenes fly in the valley's typical evening flow rather
+// than the calm at t = 0.
+const SHOT_WIND_T0 = 40;
+
+// Step the sim once, sampling the wind at the scene's own clock so the
+// pose is reproducible to the frame.
+function stepOnce(ctx, controls) {
+  const { plane, missions, sound, wind } = ctx;
+  ctx.shotT = (ctx.shotT || 0) + DT;
+  if (wind) wind.sampleAt(SHOT_WIND_T0 + ctx.shotT);
+  const events = plane.step(DT, controls, heightAt, wind || null);
+  missions.update(DT, plane, events, sound);
+  return events;
+}
+
 function stepN(ctx, n, controlFn) {
-  const { plane, missions, sound } = ctx;
   for (let i = 0; i < n; i++) {
-    const controls = controlFn(i);
-    const events = plane.step(DT, controls);
-    missions.update(DT, plane, events, sound);
-    if (plane.crashed) break;
+    stepOnce(ctx, controlFn(i));
+    if (ctx.plane.crashed) break;
   }
 }
 
@@ -49,23 +63,21 @@ export function shotName() {
 export function poseShot(name, ctx) {
   const { plane, missions } = ctx;
   const { RUNWAY } = ctx.constants;
-  if (name === 'takeoff') {
-    missions.beginSortie(0);
-    plane.resetToRunway();
+  if (name === 'cockpit') {
+    missions.beginSortie(2);
+    missions.score = 1240;
+    if (ctx.rig) ctx.rig.mode = 'cockpit';
+    // The cover: the takeoff roll at full throttle, from the pilot's
+    // seat. Kestrel Field is a shelf carved into high ground, so an
+    // approach shot dives off a cliff edge — but the roll is honest
+    // geography: the strip runs ahead under the nose, the panel is
+    // alive (ASI winding up, throttle lever full forward), and the
+    // saddle hills frame the far threshold. No pitch input: the frame
+    // freezes a breath before rotation, while the runway still fills
+    // the windscreen — the moment rotation starts, the nose hides it.
+    plane.placeAirborne(RUNWAY.x + 3, RUNWAY.height + 1.95, RUNWAY.z - 160, Math.PI, 23);
     plane.throttle = 1;
-    // Freeze ON the moment, not long after it: roll at full throttle,
-    // and stop ~1 s after liftoff while the Kestrel is still LOW over
-    // the strip, runway visible behind/below in the chase frame.
-    let airborneSteps = 0;
-    for (let i = 0; i < 240 && airborneSteps < 30; i++) {
-      const wasAirborne = plane.wasAirborne && !plane.onGround;
-      const events = plane.step(DT, {
-        pitch: plane.speed > 20 ? 0.65 : 0, roll: 0, throttleDelta: 0, brake: false,
-      });
-      missions.update(DT, plane, events, ctx.sound);
-      if (wasAirborne || (!plane.onGround && plane.wasAirborne)) airborneSteps++;
-      if (plane.crashed) break;
-    }
+    stepN(ctx, 3, () => ({ pitch: 0, roll: 0, throttleDelta: 0, brake: false }));
     return true;
   }
   if (name === 'rings') {
@@ -73,29 +85,26 @@ export function poseShot(name, ctx) {
     // Two rings already threaded, the third dead ahead down the valley.
     missions.ringIndex = 2; missions.score = 240; missions.paintRings();
     const ring = missions.rings[2];
-    const start = ring.clone(); start.z += 210; start.y += 16; start.x += 26;
+    const start = ring.clone(); start.z += 210; start.y += 16; start.x += 18;
     const heading = Math.atan2(ring.x - start.x, -(ring.z - start.z));
     plane.placeAirborne(start.x, start.y, start.z, heading, 33);
-    // Fly the real sim until the plane is ~35 m out — about a second
-    // from threading it — so the ring hangs LARGE in the centre of the
-    // frame with the Kestrel big in the lower-centre foreground.
+    // Fly the real sim until the plane is ~46 m out — the ring large in
+    // the centre of the frame but whole, its halo a hint instead of a
+    // wash, the Kestrel big in the lower-centre foreground.
     for (let i = 0; i < 260; i++) {
       const controls = autopilot(plane, ring, 0.66);
-      const events = plane.step(DT, controls);
-      missions.update(DT, plane, events, ctx.sound);
+      stepOnce(ctx, controls);
       if (plane.crashed) break;
-      if (plane.pos.distanceTo(ring) < 36) break;
+      if (plane.pos.distanceTo(ring) < 46) break;
     }
     return true;
   }
   if (name === 'drop') {
     missions.beginSortie(1);
     const t = missions.targets[0];
-    // Lower run-in than before (+38 m start, aiming +28 m over the pad
-    // instead of +58/+52) so the village houses and pad read bigger in
-    // the lower frame. Still well above the rooftops/terrain on the
-    // approach, and the release trigger (horizontal distance only) is
-    // unchanged.
+    // A low run-in (+38 m start, aiming +28 m over the pad) so the
+    // village houses and pad read big in the lower frame, still well
+    // above the rooftops on the approach.
     const start = t.pos.clone(); start.z += 330; start.x -= 40; start.y += 38;
     const heading = Math.atan2(t.pos.x - start.x, -(t.pos.z - start.z));
     plane.placeAirborne(start.x, start.y, start.z, heading, 29);
@@ -109,8 +118,7 @@ export function poseShot(name, ctx) {
       const controls = autopilot(plane, aim, 0.5);
       const d = Math.hypot(plane.pos.x - t.pos.x, plane.pos.z - t.pos.z);
       if (!dropped && d < 55) { missions.dropBag(plane); dropped = true; }
-      const events = plane.step(DT, controls);
-      missions.update(DT, plane, events, ctx.sound);
+      stepOnce(ctx, controls);
       if (plane.crashed) break;
       if (dropped && ++sinceDrop >= 25) break;
     }
@@ -119,33 +127,17 @@ export function poseShot(name, ctx) {
   if (name === 'landing') {
     missions.beginSortie(2);
     missions.score = 1240;
-    // Composed SHORT FINAL, computed from the runway's actual
-    // constants (config.js / terrain.js): RUNWAY.x is the centreline,
-    // RUNWAY.z is the strip's centre, RUNWAY.length runs along z and
-    // heading 0 flies toward -z, so the approach threshold is the
-    // SOUTH end, thresholdZ = RUNWAY.z + RUNWAY.length / 2
-    // (= -1650 + 170 = -1480). Place the Kestrel ON that centreline
-    // ~120 m short of the threshold, at approach speed, then freeze
-    // EARLY — 36 steps at DT = 1/30 is ~1.2 s, ~29 m of travel at
-    // 24 m/s — while it is still airborne on final, ~90 m short, with
-    // the runway filling the lower frame. Freezing this early
-    // guarantees no touchdown / landing logic can trigger first
-    // (the previous 240 m / 36 m / 90-step pose ended ON THE GROUND
-    // off-runway on grass).
-    // The start altitude MUST come from the terrain itself, not from
-    // RUNWAY.height: the placement point sits beyond the runway
-    // plateau's feathered edge, where the analytic terrain height is
-    // much higher than the plateau constant — starting from that
-    // constant put the plane BELOW the terrain surface, so the sim
-    // grounded it instantly on grass.
-    const thresholdZ = RUNWAY.z + RUNWAY.length / 2;
-    const placedX = RUNWAY.x;
-    const placedZ = thresholdZ + 120;
-    const start = new THREE.Vector3(placedX, heightAt(placedX, placedZ) + 22, placedZ);
-    plane.placeAirborne(start.x, start.y, start.z, 0, 24);
-    plane.throttle = 0.3;
-    const aim = new THREE.Vector3(RUNWAY.x, RUNWAY.height + 1, thresholdZ - 60);
-    stepN(ctx, 36, () => autopilot(plane, aim, 0.3));
+    // Short final, southbound: the autopilot flies her down the last
+    // hundred metres to a touchdown point a third along the strip —
+    // gear down, sink on, the whole valley opening beyond the far
+    // threshold, instead of the old frame that dived at the northern
+    // rim wall. (Hand-holding the nose up balloons her into a climb
+    // in this flight model; the honest flare lives in the touchdown
+    // the sim is about to make, not in a posed pitch.)
+    const start = new THREE.Vector3(RUNWAY.x - 4, RUNWAY.height + 16, RUNWAY.z - 120);
+    plane.placeAirborne(start.x, start.y, start.z, Math.PI, 24);
+    const aim = new THREE.Vector3(RUNWAY.x, RUNWAY.height + 1, RUNWAY.z + 60);
+    stepN(ctx, 26, () => autopilot(plane, aim, 0.25));
     return true;
   }
   return false;
